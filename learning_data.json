@@ -1,14 +1,7 @@
 {
-    "total_seconds": 1398.168084,
-    "total_cycles": 0.2589200155555555,
-    "daily_log": {
-        "2025-04-30": {
-            "seconds": 850.739846,
-            "cycles": 0.15754441592592588
-        },
-        "2025-05-01": {
-            "seconds": 547.4282380000001,
-            "cycles": 0.10137559962962962
-        }
-    }
+    "total_seconds": 0,
+    "total_cycles": 0,
+    "daily_log": {},
+    "auto_pause_media": true,
+    "auto_resume_media": true
 }

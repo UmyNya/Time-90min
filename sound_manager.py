@@ -13,9 +13,23 @@ except pygame.error as init_error:
 
 SOUND_FILE_NAME = "twinkling_sound.mp3" # Updated sound file name
 
+def play_silence(duration=2.0):
+    """播放指定秒数的静音音频，用于激活蓝牙耳机连接。"""
+    if pygame and pygame.mixer.get_init():
+        # 生成2秒静音音频（44100Hz, 16bit, 立体声）
+        import numpy as np
+        num_samples = int(44100 * duration)
+        # 创建一个 (num_samples, 2) 的二维数组，用于立体声
+        arr = np.zeros((num_samples, 2), dtype=np.int16)
+        sound = pygame.sndarray.make_sound(arr)
+        sound.play()
+        time.sleep(duration)  # 等待静音播放完成
+
 def play_notification_sound(sound_type='default'):
     """Plays the notification sound, falling back to system sound if necessary."""
     try:
+        # 先播放2秒静音以激活蓝牙耳机
+        play_silence(2.0)
         # Construct absolute path relative to this script's location
         script_dir = os.path.dirname(__file__)
         sound_file_path = os.path.abspath(os.path.join(script_dir, SOUND_FILE_NAME))
@@ -38,6 +52,12 @@ def play_notification_sound(sound_type='default'):
         # Error handling is now within the pygame play block.
         print(f"[{sound_type}] Error occurred trying to play sound: {e}") # Keep one error message
 
+def quit_mixer():
+    """Cleans up the pygame mixer."""
+    if pygame and pygame.mixer.get_init():
+        print("[SoundManager] Quitting pygame mixer.")
+        pygame.mixer.quit()
+
 if __name__ == '__main__':
     # Simple test when running this file directly
     if pygame and pygame.mixer.get_init():
@@ -45,8 +65,9 @@ if __name__ == '__main__':
         play_notification_sound('test')
         # Wait a bit for the sound to play in the background during test
         print("Waiting for sound to finish (approx 5s)...")
-        time.sleep(5) 
+        time.sleep(5)
         print("Test finished.")
-        pygame.mixer.quit() # Clean up mixer when test is done
+        # Call the quit function in the test as well
+        quit_mixer()
     else:
         print("Pygame mixer not initialized. Cannot run test.")

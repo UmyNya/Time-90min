@@ -9,6 +9,8 @@ import os
 import winsound # For sound on Windows
 import sound_manager # Import the new sound module
 import ctypes # Import ctypes for DPI awareness
+import win32api # For media key simulation
+import win32con # For media key simulation
 
 # Constants
 MAIN_TIMER_DURATION = 90 * 60  # 90 minutes in seconds
@@ -121,20 +123,34 @@ class LearningApp:
         self.paused = False
 
         self.load_data()
+        # Initialize auto_pause_media state AFTER loading data
+        self.auto_pause_media_var = tk.BooleanVar(value=self.learning_data.get('auto_pause_media', True)) # Default to True if not found
+        self.auto_pause_media = self.auto_pause_media_var.get()
+
         self.create_main_layout() # First create the layout with main_frame
         self.show_start_button() # Then show the start button view
 
     def load_data(self):
+        default_data = {
+            "total_seconds": 0,
+            "total_cycles": 0,
+            "daily_log": {},
+            "auto_pause_media": True # Default value for the new setting
+        }
         if os.path.exists(DATA_FILE):
             try:
                 with open(DATA_FILE, 'r') as f:
-                    self.learning_data = json.load(f)
+                    loaded_data = json.load(f)
+                    # Merge loaded data with defaults to ensure new keys exist
+                    self.learning_data = {**default_data, **loaded_data}
             except (json.JSONDecodeError, IOError):
-                self.learning_data = {"total_seconds": 0, "total_cycles": 0, "daily_log": {}}
+                self.learning_data = default_data
         else:
-            self.learning_data = {"total_seconds": 0, "total_cycles": 0, "daily_log": {}}
+            self.learning_data = default_data
 
     def save_data(self):
+        # Ensure the current state of auto_pause_media is saved
+        self.learning_data['auto_pause_media'] = self.auto_pause_media_var.get()
         try:
             with open(DATA_FILE, 'w') as f:
                 json.dump(self.learning_data, f, indent=4)
@@ -168,7 +184,8 @@ class LearningApp:
         self.sidebar_frame.grid_rowconfigure(1, weight=0) # Overview Content
         self.sidebar_frame.grid_rowconfigure(2, weight=0) # Spacer
         self.sidebar_frame.grid_rowconfigure(3, weight=0) # Records Button
-        self.sidebar_frame.grid_rowconfigure(4, weight=1) # Bottom Spacer
+        self.sidebar_frame.grid_rowconfigure(4, weight=0) # Settings Button
+        self.sidebar_frame.grid_rowconfigure(5, weight=1) # Bottom Spacer
 
         # Populate Sidebar
         ttk.Label(self.sidebar_frame, text="学习概览", style='SidebarHeader.TLabel').grid(row=0, column=0, pady=(0, 5), sticky='ew')
@@ -180,6 +197,9 @@ class LearningApp:
 
         record_button = ttk.Button(self.sidebar_frame, text="学习记录", command=self.show_learning_records, style='Secondary.TButton')
         record_button.grid(row=3, column=0, pady=10, sticky='ew')
+
+        settings_button = ttk.Button(self.sidebar_frame, text="设置", command=self.show_settings_view, style='Secondary.TButton')
+        settings_button.grid(row=4, column=0, pady=10, sticky='ew')
 
         self.update_overview_display() # Initial update
 
@@ -541,6 +561,54 @@ class LearningApp:
                 continue
 
         return aggregated
+
+    def pause_media(self):
+        """Simulates pressing the media Play/Pause key."""
+        try:
+            # Map virtual key code to hardware scan code
+            hwcode = win32api.MapVirtualKey(win32con.VK_MEDIA_PLAY_PAUSE, 0)
+            # Simulate key press and release
+            win32api.keybd_event(win32con.VK_MEDIA_PLAY_PAUSE, hwcode)
+            print("Media Play/Pause key simulated.") # Optional: for debugging
+        except Exception as e:
+            print(f"Error simulating media key: {e}")
+            # Optionally show a user-friendly error if needed
+            # messagebox.showwarning("媒体控制错误", f"无法暂停媒体播放: {e}", parent=self.root)
+
+    def toggle_auto_pause(self):
+        """Toggles the auto_pause_media setting and saves it."""
+        self.auto_pause_media = self.auto_pause_media_var.get()
+        print(f"Auto-pause media set to: {self.auto_pause_media}") # Debugging
+        self.save_data() # Save the setting immediately
+
+    def show_settings_view(self):
+        """Displays the settings controls in the main frame."""
+        self.clear_main_frame()
+        # Configure grid for settings content
+        self.main_frame.grid_rowconfigure(0, weight=0) # Title
+        self.main_frame.grid_rowconfigure(1, weight=0) # Setting row 1
+        self.main_frame.grid_rowconfigure(2, weight=1) # Spacer
+        self.main_frame.grid_columnconfigure(0, weight=1)
+
+        ttk.Label(self.main_frame, text="设置", style='Header.TLabel').grid(row=0, column=0, pady=(10, 20), sticky='n')
+
+        # Auto-pause setting
+        settings_frame = ttk.Frame(self.main_frame, style='Main.TFrame')
+        settings_frame.grid(row=1, column=0, sticky='ew', padx=50)
+        settings_frame.grid_columnconfigure(0, weight=1)
+        settings_frame.grid_columnconfigure(1, weight=0)
+
+        ttk.Label(settings_frame, text="休息时自动暂停媒体播放:", style='TLabel').grid(row=0, column=0, sticky='w', padx=(0, 10))
+        auto_pause_check = ttk.Checkbutton(settings_frame,
+                                           variable=self.auto_pause_media_var,
+                                           command=self.toggle_auto_pause,
+                                           style='Switch.TCheckbutton') # Using a style for a switch-like appearance if available/configured
+        auto_pause_check.grid(row=0, column=1, sticky='e')
+
+        # Add a back button (optional but good UX)
+        back_button = ttk.Button(self.main_frame, text="返回", command=self.show_start_button, style='Secondary.TButton')
+        back_button.grid(row=2, column=0, pady=20, sticky='s')
+
 
 if __name__ == "__main__":
     root = tk.Tk()

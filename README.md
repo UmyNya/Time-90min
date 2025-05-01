@@ -1,6 +1,6 @@
-# LearningApp - 专注学习计时器
+# LearningApp-Time-90min - 专注学习计时器
 
-LearningApp 是一款简洁的桌面应用程序，旨在帮助用户通过固定的专注时段来管理学习和工作时间，并记录学习时长。灵感来源于哔哩哔哩up主：[择恩](https://space.bilibili.com/2229541)，适配【为什么我能每天学习10小时】https://www.bilibili.com/video/BV1naLozQEBq 这个视频。
+LearningApp-Time-90min 是一款简洁的桌面应用程序，旨在帮助用户通过固定的专注时段来管理学习和工作时间，并记录学习时长。灵感来源于哔哩哔哩up主：[择恩](https://space.bilibili.com/2229541)，适配【为什么我能每天学习10小时】https://www.bilibili.com/video/BV1naLozQEBq 这个视频。
 ## 下载
 
 1. 右侧releases

@@ -1,17 +1,13 @@
 # LearningApp-Time-90min - 专注学习计时器
-<<<<<<< HEAD
 
 LearningApp-Time-90min 是一款简洁高效的桌面专注计时工具，帮助用户以 90 分钟为单位进行深度学习或工作，并自动记录和统计学习时长。灵感来源于哔哩哔哩 up 主 [择恩](https://space.bilibili.com/2229541) 及其视频 [为什么我能每天学习10小时](https://www.bilibili.com/video/BV1naLozQEBq)。
 
-=======
-
-LearningApp-Time-90min 是一款简洁的桌面应用程序，旨在帮助用户通过固定的专注时段来管理学习和工作时间，并记录学习时长。灵感来源于哔哩哔哩up主：[择恩](https://space.bilibili.com/2229541)，适配【为什么我能每天学习10小时】https://www.bilibili.com/video/BV1naLozQEBq 这个视频。
->>>>>>> 21063129f2a8734eacaa2ca1563bab9fe94969c0
 ## 下载
 
-- [Releases 页面](#)（建议使用最新版本）
+- 右侧Releases 页面（建议使用最新版本）
 - 夸克网盘链接：https://pan.quark.cn/s/2729bc5f557a
-# v0.2
+
+## v0.2
 - 美化了窗口
 - 增加了设置，可以设置自动暂停视频，但如果你有已经播放的视频会自动播放[\doge], 所以在不播放网课时建议关闭
 - 增加了清除数据功能，第一次使用时建议点击一下。
@@ -56,5 +52,5 @@ LearningApp-Time-90min 是一款简洁的桌面应用程序，旨在帮助用户
 - 当前版本仅支持固定 90 分钟倒计时，不支持自定义时长。
 
 ---
-
+使用Trae创作，主力模型为Gemini-2.5-Pro
 如有建议或 bug 反馈，欢迎留言。

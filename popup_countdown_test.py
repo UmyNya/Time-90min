@@ -16,7 +16,7 @@ def show_popup_countdown(root, duration, callback, title="休息提醒"):
         popup_height = 300 # Increased size
 
         # --- Align Popup to Bottom-Right --- START
-        popup.update_idletasks()  # 确保窗口尺寸已更新
+        # popup.update_idletasks()  # 确保窗口尺寸已更新
         # screen_width = root.winfo_screenwidth()
         # screen_height = root.winfo_screenheight() 
         import ctypes

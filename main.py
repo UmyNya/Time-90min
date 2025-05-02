@@ -459,8 +459,8 @@ class LearningApp:
         popup_width = int(screen_width*0.12) if popup.winfo_width() > 1 else 600
         popup_height = int(screen_height*0.12) if popup.winfo_height() > 1 else 300
         popup.update_idletasks() 
-        x_coordinate = screen_width - popup_width
-        y_coordinate = screen_height - popup_height - 40 # Adjust slightly for taskbar
+        x_coordinate = screen_width - popup_width*2-50
+        y_coordinate = screen_height - popup_height*2 - 50 # Adjust slightly for taskbar
         popup.geometry(f"{popup_width}x{popup_height}+{x_coordinate}+{y_coordinate}")
         # --- Align Popup to Bottom-Right --- END
 

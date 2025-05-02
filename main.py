@@ -1,39 +1,26 @@
 import tkinter as tk
-from tkinter import messagebox, font # Removed ttk import as we'll use customtkinter
+from tkinter import messagebox, font
 import time
 import random
-import threading # Import threading
 import json
 from datetime import datetime, timedelta
 import os
-# import winsound # Remove winsound import
-import sound_manager # Import the sound_manager module
+import sound_manager
 import ctypes
 import win32api
 import win32con
 import customtkinter
 
 # --- Load Custom Font ---
-FONT_NAME = "Alibaba PuHuiTi" # Name to refer to the font
+FONT_NAME = "Alibaba PuHuiTi"
 FONT_FILENAME = "Alibaba-PuHuiTi-Regular.ttf"
 FONT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), FONT_FILENAME)
 
-# Function to load font (consider error handling)
 def load_custom_font():
     try:
-        # This part might be tricky with CTk/Tkinter directly loading TTF
-        # Often, the font needs to be installed system-wide or handled differently.
-        # Let's try setting the default font for CTk widgets.
-        # We'll define font tuples/objects later using this name if needed.
-        # Note: Direct TTF loading in Tkinter/CTk without system install is complex.
-        # A common approach is to assume the font is installed or use libraries
-        # that handle font loading better if CTk doesn't do it automatically.
-        # For now, we'll define the font name and try applying it.
         if not os.path.exists(FONT_PATH):
             print(f"Warning: Font file not found at {FONT_PATH}. Please copy it there.")
             return False
-        # CustomTkinter might pick up fonts differently. Let's define the font object.
-        # We will apply this font object to specific widgets.
         print(f"Font file found at {FONT_PATH}. Attempting to use '{FONT_NAME}'.")
         return True
     except Exception as e:
@@ -50,30 +37,45 @@ SHORT_BREAK_MIN_INTERVAL = 3 * 60 # 3 minutes in seconds
 SHORT_BREAK_MAX_INTERVAL = 5 * 60 # 5 minutes in seconds
 DATA_FILE = "learning_data.json"
 
-# --- DPI Awareness (Attempt to fix blurriness on Windows) ---
+# --- DPI Awareness (修复Windows上的模糊问题) ---
 try:
-    ctypes.windll.shcore.SetProcessDpiAwareness(1) # For Windows 8.1+
+    ctypes.windll.shcore.SetProcessDpiAwareness(1) # Windows 8.1+
 except AttributeError:
     try:
-        ctypes.windll.user32.SetProcessDPIAware() # For Windows Vista+
+        ctypes.windll.user32.SetProcessDPIAware() # Windows Vista+
     except AttributeError:
-        pass # Not supported on older Windows
+        pass # 不支持的旧版Windows
 
-# --- Sound Manager (Simplified) --- << REMOVED OLD WINSOUND CODE
+# --- 媒体控制 ---
+import asyncio
+from media_status_fetcher import get_media_status, toggle_media_playback as async_toggle_media_playback
 
-# --- Remove internal sound functions --- << REMOVED DUPLICATE OLD WINSOUND CODE
-
-# --- Media Control --- (Added Section)
-def toggle_media_playback():
-    """Simulates pressing the Play/Pause media key."""
+def get_current_media_status():
+    """获取当前媒体播放状态"""
     try:
-        # VK_MEDIA_PLAY_PAUSE = 0xB3
-        win32api.keybd_event(win32con.VK_MEDIA_PLAY_PAUSE, 0, 0, 0)
-        time.sleep(0.1) # Small delay might be needed
-        win32api.keybd_event(win32con.VK_MEDIA_PLAY_PAUSE, 0, win32con.KEYEVENTF_KEYUP, 0)
-        print("Toggled media playback (Play/Pause key simulated).")
+        status = asyncio.run(get_media_status())
+        print(f"当前媒体状态: {status}")
+        return status
     except Exception as e:
-        print(f"Error simulating media key: {e}")
+        print(f"获取媒体状态时出错: {e}")
+        return "未知状态"
+
+def toggle_media_playback():
+    """切换媒体播放/暂停状态"""
+    try:
+        result = asyncio.run(async_toggle_media_playback())
+        print(result)
+        return result
+    except Exception as e:
+        print(f"切换媒体播放状态时出错: {e}")
+        try:
+            win32api.keybd_event(win32con.VK_MEDIA_PLAY_PAUSE, 0, 0, 0)
+            time.sleep(0.1)
+            win32api.keybd_event(win32con.VK_MEDIA_PLAY_PAUSE, 0, win32con.KEYEVENTF_KEYUP, 0)
+            print("回退到模拟按键方式切换媒体播放状态")
+        except Exception as e2:
+            print(f"模拟媒体键时出错: {e2}")
+        return "未知结果"
 
 # --- Settings Page using CustomTkinter ---
 class SettingsPage(customtkinter.CTkToplevel):
@@ -407,7 +409,20 @@ class LearningApp:
         # sound_manager.play_notification_sound('short_break_start') # Assuming specific sound
         sound_manager.play_notification_sound() # Use default if only one sound
         print("[Trigger Short Break] Sound finished, showing popup.")
-        self.pause_media_if_enabled()
+        
+        # Pause media if setting is enabled and media is playing
+        if self.auto_pause_media_var.get():
+            print("[Trigger Short Break] Auto-pause media enabled, checking media status...")
+            media_status = get_current_media_status()
+            if media_status == "播放":
+                print("[Trigger Short Break] Media is playing, pausing...")
+                toggle_media_playback() # Call the media control function
+                self.media_paused_by_app = True # Set flag to remember we paused it
+                print("[Trigger Short Break] Media paused.")
+            else:
+                print(f"[Trigger Short Break] Media is not playing (status: {media_status}), not pausing.")
+                self.media_paused_by_app = False # Make sure flag is not set
+        
         # Show the larger popup
         self.show_popup_countdown(SHORT_BREAK_TIMER_DURATION, self.end_short_break, "休息一下")
 
@@ -416,7 +431,20 @@ class LearningApp:
         # sound_manager.play_notification_sound('long_break_start') # Assuming specific sound
         sound_manager.play_notification_sound() # Use default if only one sound
         print("[Trigger Long Break] Sound finished, showing popup.")
-        self.pause_media_if_enabled()
+        
+        # Pause media if setting is enabled and media is playing
+        if self.auto_pause_media_var.get():
+            print("[Trigger Long Break] Auto-pause media enabled, checking media status...")
+            media_status = get_current_media_status()
+            if media_status == "播放":
+                print("[Trigger Long Break] Media is playing, pausing...")
+                toggle_media_playback() # Call the media control function
+                self.media_paused_by_app = True # Set flag to remember we paused it
+                print("[Trigger Long Break] Media paused.")
+            else:
+                print(f"[Trigger Long Break] Media is not playing (status: {media_status}), not pausing.")
+                self.media_paused_by_app = False # Make sure flag is not set
+                
         self.show_popup_countdown(LONG_BREAK_TIMER_DURATION, self.end_long_break, "长时间休息")
 
     def end_short_break(self):
@@ -426,8 +454,14 @@ class LearningApp:
         print("[End Short Break] Sound finished.")
         # Resume media only if auto-resume is enabled AND media was paused by the app
         if self.auto_resume_media_var.get() and self.media_paused_by_app:
-            print("[End Short Break] Resuming media playback...")
-            toggle_media_playback()
+            print("[End Short Break] Auto-resume media enabled and we paused it, checking media status...")
+            media_status = get_current_media_status()
+            if media_status == "暂停":
+                print("[End Short Break] Media is paused, resuming...")
+                toggle_media_playback() # Call the media control function
+                print("[End Short Break] Media resumed.")
+            else:
+                print(f"[End Short Break] Media is not paused (status: {media_status}), not resuming.")
         self.media_paused_by_app = False # Reset flag
         self.schedule_short_break() # Schedule the next one
 
@@ -438,8 +472,14 @@ class LearningApp:
         print("[End Long Break] Sound finished.")
         # Resume media only if auto-resume is enabled AND media was paused by the app
         if self.auto_resume_media_var.get() and self.media_paused_by_app:
-            print("[End Long Break] Resuming media playback...")
-            toggle_media_playback()
+            print("[End Long Break] Auto-resume media enabled and we paused it, checking media status...")
+            media_status = get_current_media_status()
+            if media_status == "暂停":
+                print("[End Long Break] Media is paused, resuming...")
+                toggle_media_playback() # Call the media control function
+                print("[End Long Break] Media resumed.")
+            else:
+                print(f"[End Long Break] Media is not paused (status: {media_status}), not resuming.")
         self.media_paused_by_app = False # Reset flag
         self.show_start_button() # Return to start view after long break
 
@@ -508,26 +548,7 @@ class LearningApp:
 
         popup.protocol("WM_DELETE_WINDOW", on_popup_close)
 
-    def pause_media_if_enabled(self):
-        """Pauses media playback if the setting is enabled."""
-        if self.auto_pause_media_var.get():
-            # --- Ideal Check (Difficult to Implement Reliably) ---
-            # TODO: Implement a reliable check for active media playback state.
-            # This is complex as it requires interacting with OS audio sessions
-            # or specific application APIs. Libraries like pycaw might help but add complexity.
-            # For now, we send the pause key regardless, assuming it's harmless if already paused.
-            # is_playing = check_if_media_is_playing() # Placeholder for the check
-            # if not is_playing:
-            #     print("Media not detected as playing. Skipping pause.")
-            #     return
-            # --------------------------------------------------------
-
-            print("Auto-pause enabled. Simulating pause key...")
-            toggle_media_playback()
-            self.media_paused_by_app = True # Set flag indicating app paused media
-        else:
-            print("Auto-pause disabled. Media playback not affected.")
-            self.media_paused_by_app = False # Ensure flag is false if auto-pause is off
+    # pause_media_if_enabled函数已被移除，使用更精确的媒体状态检测逻辑替代
 
     def stop_timer_and_return(self):
         if self.current_timer_id:

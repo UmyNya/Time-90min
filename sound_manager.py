@@ -29,7 +29,7 @@ def play_notification_sound(sound_type='default'):
     """Plays the notification sound, falling back to system sound if necessary."""
     try:
         # 先播放2秒静音以激活蓝牙耳机
-        play_silence(2.0)
+        play_silence(0.5)
         # Construct absolute path relative to this script's location
         script_dir = os.path.dirname(__file__)
         sound_file_path = os.path.abspath(os.path.join(script_dir, SOUND_FILE_NAME))

@@ -25,11 +25,18 @@ def play_silence(duration=2.0):
         sound.play()
         time.sleep(duration)  # 等待静音播放完成
 
-def play_notification_sound(sound_type='default'):
-    """Plays the notification sound, falling back to system sound if necessary."""
+def play_notification_sound(sound_type='default', activate_bluetooth=False):
+    """Plays the notification sound, falling back to system sound if necessary.
+    
+    Args:
+        sound_type: Type of notification sound ('default' or other types)
+        activate_bluetooth: Whether to play silence first to activate bluetooth headphones
+    """
     try:
-        # 先播放2秒静音以激活蓝牙耳机
-        play_silence(0.5)
+        # 只有在需要激活蓝牙耳机时才播放静音
+        if activate_bluetooth:
+            play_silence(0.5)
+            
         # Construct absolute path relative to this script's location
         script_dir = os.path.dirname(__file__)
         sound_file_path = os.path.abspath(os.path.join(script_dir, SOUND_FILE_NAME))

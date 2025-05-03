@@ -30,11 +30,21 @@ def load_custom_font():
 FONT_LOADED = load_custom_font()
 
 # --- Constants ---
-MAIN_TIMER_DURATION = 90 * 60  # 90 minutes in seconds
+DEFAULT_MAIN_TIMER_DURATION = 90 * 60  # 默认90分钟（秒）
 SHORT_BREAK_TIMER_DURATION = 10  # 10 seconds
 LONG_BREAK_TIMER_DURATION = 20 * 60 # 20 minutes in seconds
-SHORT_BREAK_MIN_INTERVAL = 3 * 60 # 3 minutes in seconds
-SHORT_BREAK_MAX_INTERVAL = 5 * 60 # 5 minutes in seconds
+
+# 短休息间隔选项（秒）
+BREAK_INTERVAL_OPTIONS = {
+    "2-4分钟": (2 * 60, 4 * 60),
+    "3-5分钟": (3 * 60, 5 * 60),
+    "4-6分钟": (4 * 60, 6 * 60),
+    "5-7分钟": (5 * 60, 7 * 60)
+}
+
+# 默认短休息间隔
+DEFAULT_BREAK_INTERVAL = "3-5分钟"
+
 DATA_FILE = "learning_data.json"
 
 # --- DPI Awareness (修复Windows上的模糊问题) ---
@@ -82,7 +92,7 @@ class SettingsPage(customtkinter.CTkToplevel):
     def __init__(self, parent, app_instance):
         super().__init__(parent)
         self.title("设置")
-        self.geometry("350x300") # Increased height further for new switch
+        self.geometry("400x500") # 增加高度以容纳新选项
         self.transient(parent)
         self.grab_set()
         self.app = app_instance
@@ -143,7 +153,53 @@ class SettingsPage(customtkinter.CTkToplevel):
             self.auto_resume_switch.deselect()
         self.auto_resume_switch.pack(side="right")
 
-        # --- Clear Data Button ---
+        # --- 周期时间设置 ---
+        cycle_frame = customtkinter.CTkFrame(container, fg_color="transparent")
+        cycle_frame.pack(fill="x", pady=10)
+        
+        cycle_label = customtkinter.CTkLabel(cycle_frame, text="学习周期时间:", **font_args_label)
+        cycle_label.pack(side="left", padx=(0, 10))
+        
+        # 创建滑块和数值显示
+        cycle_slider_frame = customtkinter.CTkFrame(container, fg_color="transparent")
+        cycle_slider_frame.pack(fill="x", pady=5)
+        
+        self.cycle_slider = customtkinter.CTkSlider(
+            cycle_slider_frame,
+            from_=1,
+            to=180,
+            number_of_steps=179,
+            command=self.update_cycle_value,
+            variable=self.app.cycle_duration_var
+        )
+        self.cycle_slider.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        
+        self.cycle_value_label = customtkinter.CTkLabel(
+            cycle_slider_frame, 
+            text=f"{self.app.cycle_duration_var.get()}分钟",
+            width=60,
+            **font_args_label
+        )
+        self.cycle_value_label.pack(side="right")
+        
+        # --- 短休息间隔设置 ---
+        break_interval_frame = customtkinter.CTkFrame(container, fg_color="transparent")
+        break_interval_frame.pack(fill="x", pady=10)
+        
+        break_interval_label = customtkinter.CTkLabel(break_interval_frame, text="短休息间隔:", **font_args_label)
+        break_interval_label.pack(side="left", padx=(0, 10))
+        
+        # 创建下拉菜单
+        self.break_interval_menu = customtkinter.CTkOptionMenu(
+            break_interval_frame,
+            values=list(BREAK_INTERVAL_OPTIONS.keys()),
+            variable=self.app.break_interval_var,
+            command=self.app.save_data,
+            **font_args_label
+        )
+        self.break_interval_menu.pack(side="right")
+        
+        # --- Clear Data Button --- (移动到短休息间隔下方)
         font_args_button = {"font": (FONT_NAME, 12)} if FONT_LOADED else {}
         clear_button = customtkinter.CTkButton(
             container,
@@ -154,10 +210,15 @@ class SettingsPage(customtkinter.CTkToplevel):
             **font_args_button
         )
         clear_button.pack(pady=(15, 5))
-
+        
         # --- Close Button ---
-        close_button = customtkinter.CTkButton(container, text="关闭", command=self.destroy, **font_args_button)
-        close_button.pack(pady=(5, 0))
+        close_button = customtkinter.CTkButton(container, text="关闭", command=self.close_settings, **font_args_button)
+        close_button.pack(pady=(15, 0))
+        
+    def close_settings(self):
+        # 关闭设置页面前刷新主界面按钮
+        self.app.show_start_button()
+        self.destroy()
 
     def confirm_clear_data(self):
         confirmed = messagebox.askyesno(
@@ -168,6 +229,12 @@ class SettingsPage(customtkinter.CTkToplevel):
         if confirmed:
             self.app.clear_learning_data()
             messagebox.showinfo("操作完成", "学习数据已清空。", parent=self)
+            
+    def update_cycle_value(self, value=None):
+        # 更新周期时间显示
+        current_value = self.app.cycle_duration_var.get()
+        self.cycle_value_label.configure(text=f"{current_value}分钟")
+        self.app.save_data()
 
 # --- Main Application Class using CustomTkinter ---
 class LearningApp:
@@ -182,7 +249,7 @@ class LearningApp:
         customtkinter.set_appearance_mode("System") # Options: "System", "Dark", "Light"
         customtkinter.set_default_color_theme("blue") # Options: "blue", "green", "dark-blue"
 
-        self.main_timer_seconds = MAIN_TIMER_DURATION
+        self.main_timer_seconds = DEFAULT_MAIN_TIMER_DURATION
         self.long_break_seconds = LONG_BREAK_TIMER_DURATION
         self.current_timer_id = None
         self.short_break_timer_id = None
@@ -190,12 +257,21 @@ class LearningApp:
         self.session_start_time = None # Tracks start of the current learning segment (since last 'start')
         self.paused = False
         self.media_paused_by_app = False # Flag to track if media was paused by the app
+        self.is_paused_for_5min = False # 是否处于5分钟暂停状态
+        self.pause_end_time = None # 暂停结束时间
+        self.pause_timer_id = None # 暂停计时器ID
 
         # Load data first
         self.load_data()
         # Initialize BooleanVars AFTER loading data, using the loaded values
         self.auto_pause_media_var = tk.BooleanVar(value=self.learning_data.get('auto_pause_media', True))
-        self.auto_resume_media_var = tk.BooleanVar(value=self.learning_data.get('auto_resume_media', True)) # Added
+        self.auto_resume_media_var = tk.BooleanVar(value=self.learning_data.get('auto_resume_media', True))
+        
+        # 初始化周期时间（分钟）
+        self.cycle_duration_var = tk.IntVar(value=self.learning_data.get('cycle_duration', 90))
+        
+        # 初始化短休息间隔选项
+        self.break_interval_var = tk.StringVar(value=self.learning_data.get('break_interval', DEFAULT_BREAK_INTERVAL))
 
         self.create_main_layout() # Create layout using CTk widgets
         self.show_start_button() # Show initial view
@@ -206,7 +282,9 @@ class LearningApp:
             "total_cycles": 0,
             "daily_log": {},
             "auto_pause_media": True, # Default value
-            "auto_resume_media": True # Default value for new setting (Added)
+            "auto_resume_media": True, # Default value for new setting
+            "cycle_duration": 90, # 默认周期时间（分钟）
+            "break_interval": DEFAULT_BREAK_INTERVAL # 默认短休息间隔
         }
         if os.path.exists(DATA_FILE):
             try:
@@ -222,7 +300,9 @@ class LearningApp:
     def save_data(self):
         # Update settings from BooleanVars before saving
         self.learning_data['auto_pause_media'] = self.auto_pause_media_var.get()
-        self.learning_data['auto_resume_media'] = self.auto_resume_media_var.get() # Added
+        self.learning_data['auto_resume_media'] = self.auto_resume_media_var.get()
+        self.learning_data['cycle_duration'] = self.cycle_duration_var.get()
+        self.learning_data['break_interval'] = self.break_interval_var.get()
         try:
             with open(DATA_FILE, 'w') as f:
                 json.dump(self.learning_data, f, indent=4)
@@ -235,7 +315,9 @@ class LearningApp:
         self.learning_data = self.default_data.copy() # Reset to default
         # Ensure the settings are preserved from the current UI state
         self.learning_data['auto_pause_media'] = self.auto_pause_media_var.get()
-        self.learning_data['auto_resume_media'] = self.auto_resume_media_var.get() # Added
+        self.learning_data['auto_resume_media'] = self.auto_resume_media_var.get()
+        self.learning_data['cycle_duration'] = self.cycle_duration_var.get()
+        self.learning_data['break_interval'] = self.break_interval_var.get()
         self.save_data() # Save the cleared data
         self.update_overview_display() # Update the UI
         print("Learning data cleared and saved.")
@@ -296,26 +378,37 @@ class LearningApp:
 
     def show_start_button(self):
         self.clear_main_frame() # Use original clear_main_frame now
-        # Center the button in the main frame
+        # 创建一个容器框架，用于居中放置按钮
         content_frame = self.main_frame
-        content_frame.grid_rowconfigure(0, weight=1) # Space above button
-        content_frame.grid_rowconfigure(1, weight=0) # Button row
-        content_frame.grid_rowconfigure(2, weight=0) # 休息时间标签行
-        content_frame.grid_rowconfigure(3, weight=1) # Space below button
+        
+        # 配置行权重，确保按钮垂直居中
+        for i in range(5):
+            content_frame.grid_rowconfigure(i, weight=1)
+        content_frame.grid_rowconfigure(2, weight=2)  # 中间行权重更大，确保按钮居中
         content_frame.grid_columnconfigure(0, weight=1)
+        
+        # 创建一个内部容器来放置按钮和标签，确保它们作为一个整体居中
+        center_container = customtkinter.CTkFrame(content_frame, fg_color="transparent")
+        center_container.grid(row=2, column=0, sticky="nsew")
+        center_container.grid_rowconfigure(0, weight=1)  # 按钮行
+        center_container.grid_rowconfigure(1, weight=0)  # 休息时间标签行
+        center_container.grid_columnconfigure(0, weight=1)
 
         # Apply custom font if loaded
         font_args_start_button = {"font": (FONT_NAME, 24, 'bold')} if FONT_LOADED else {"font": customtkinter.CTkFont(size=24, weight='bold')}
-        start_button = customtkinter.CTkButton(content_frame, text="开始 90 分钟学习",
+        
+        # 使用当前设置的周期时间
+        cycle_minutes = self.cycle_duration_var.get()
+        start_button = customtkinter.CTkButton(center_container, text=f"开始 {cycle_minutes} 分钟学习",
                                              command=self.start_main_timer,
                                              width=300, height=80,
                                              **font_args_start_button)
-        start_button.grid(row=1, column=0, sticky='') # Place button in the middle row (row 1)
+        start_button.grid(row=0, column=0, pady=(0, 10), sticky='') # 放在中间容器的第一行
         
         # 添加休息时间标签
         font_args_break = {"font": (FONT_NAME, 14)} if FONT_LOADED else {"font": customtkinter.CTkFont(size=14)}
-        self.break_time_label = customtkinter.CTkLabel(content_frame, text="", **font_args_break)
-        self.break_time_label.grid(row=2, column=0, pady=(10, 0), sticky='')
+        self.break_time_label = customtkinter.CTkLabel(center_container, text="", **font_args_break)
+        self.break_time_label.grid(row=1, column=0, pady=(0, 0), sticky='')
         
         # 如果有休息开始时间，显示已休息时间
         if hasattr(self, 'break_start_time'):
@@ -338,25 +431,46 @@ class LearningApp:
         content_frame.grid_rowconfigure(0, weight=1) # Space above timer
         content_frame.grid_rowconfigure(1, weight=0) # Timer label row
         content_frame.grid_rowconfigure(2, weight=0) # Session duration label row (NEW)
-        content_frame.grid_rowconfigure(3, weight=0) # Stop button row (Shifted down)
+        content_frame.grid_rowconfigure(3, weight=0) # Buttons row (Shifted down)
         content_frame.grid_rowconfigure(4, weight=1) # Space below button (Shifted down)
         content_frame.grid_columnconfigure(0, weight=1)
 
-        self.timer_label = customtkinter.CTkLabel(content_frame, text="",
+        # 创建一个固定高度的容器来放置计时器标签，确保暂停状态不会影响布局
+        timer_container = customtkinter.CTkFrame(content_frame, fg_color="transparent", height=100)
+        timer_container.grid(row=1, column=0, pady=(20, 5), sticky='')
+        timer_container.grid_propagate(False)  # 防止内容影响容器大小
+        
+        self.timer_label = customtkinter.CTkLabel(timer_container, text="",
                                                 font=customtkinter.CTkFont(size=80, weight='bold'))
-        self.timer_label.grid(row=1, column=0, pady=(20, 5), sticky='') # Adjusted pady
+        self.timer_label.place(relx=0.5, rely=0.5, anchor="center")  # 在容器中居中放置
 
         # --- Add Session Duration Label ---
         font_args_session = {"font": (FONT_NAME, 14)} if FONT_LOADED else {"font": customtkinter.CTkFont(size=14)}
         self.session_duration_label = customtkinter.CTkLabel(content_frame, text="你已学习 00:00 分钟", **font_args_session)
         self.session_duration_label.grid(row=2, column=0, pady=(0, 20), sticky='') # Place below timer
 
-        font_args_stop_button = {"font": (FONT_NAME, 14)} if FONT_LOADED else {"font": customtkinter.CTkFont(size=14)}
-        stop_button = customtkinter.CTkButton(content_frame, text="停止并记录", command=self.stop_timer_and_return, **font_args_stop_button)
-        stop_button.grid(row=3, column=0, pady=20, sticky='') # Place button in row 3
+        # 创建按钮容器框架 - 使用垂直布局
+        buttons_frame = customtkinter.CTkFrame(content_frame, fg_color="transparent")
+        buttons_frame.grid(row=3, column=0, pady=20, sticky='')
+        
+        # 添加停止按钮
+        font_args_button = {"font": (FONT_NAME, 14)} if FONT_LOADED else {"font": customtkinter.CTkFont(size=14)}
+        stop_button = customtkinter.CTkButton(buttons_frame, text="停止并记录", command=self.stop_timer_and_return, 
+                                           width=200, **font_args_button)
+        stop_button.grid(row=0, column=0, padx=10, pady=(0, 10), sticky='')
+
+        # 添加暂停5分钟按钮 - 放在停止按钮下方
+        self.pause_button = customtkinter.CTkButton(buttons_frame, text="暂停5分钟", command=self.pause_timer_for_5min, 
+                                                 width=200, **font_args_button)
+        self.pause_button.grid(row=1, column=0, padx=10, pady=(0, 0), sticky='')
 
         self.update_timer_display() # Initial display update
         self.update_session_duration_display() # Initial session duration update
+        
+        # 初始化暂停相关变量
+        self.is_paused_for_5min = False
+        self.pause_end_time = None
+        self.pause_timer_id = None
 
     def clear_window(self):
         for widget in self.root.winfo_children():
@@ -370,8 +484,15 @@ class LearningApp:
     def start_main_timer(self):
         self.start_time = datetime.now()
         self.session_start_time = datetime.now() # Initialize session start time here
-        self.main_timer_seconds = MAIN_TIMER_DURATION
+        self.timer_start_time = datetime.now()  # 记录计时器开始时间，用于基于实际时间的计时
+        
+        # 使用用户设置的周期时间
+        cycle_minutes = self.cycle_duration_var.get()
+        self.total_timer_seconds = cycle_minutes * 60  # 总计时时间（不变）
+        self.main_timer_seconds = self.total_timer_seconds  # 初始剩余时间
+        
         self.paused = False
+        self.paused_elapsed_time = 0  # 初始化暂停时已经过的时间
         
         # 取消休息时间显示的定时器（如果存在）
         if hasattr(self, 'break_timer_id') and self.break_timer_id:
@@ -385,15 +506,28 @@ class LearningApp:
     def run_main_timer(self):
         if self.paused:
             return
+            
         if self.main_timer_seconds > 0:
+            # 基于实际时间计算剩余时间
+            if hasattr(self, 'timer_start_time'):
+                elapsed_seconds = int((datetime.now() - self.timer_start_time).total_seconds())
+                # 使用暂停时已经过的时间作为基准，避免暂停期间的时间被计入
+                adjusted_elapsed = self.paused_elapsed_time + elapsed_seconds
+                self.main_timer_seconds = max(0, self.total_timer_seconds - adjusted_elapsed)
+            
             self.update_timer_display()
             self.update_session_duration_display()
-            self.main_timer_seconds -= 1
-            self.current_timer_id = self.root.after(1000, self.run_main_timer)
+            
+            # 使用较短的间隔更新，提高精度
+            self.current_timer_id = self.root.after(100, self.run_main_timer)
         else:
-            # Use sound_manager for timer end sound
-            # sound_manager.play_notification_sound('timer_end') # Assuming sound_manager handles different sounds
-            sound_manager.play_notification_sound() # Use default if only one sound
+            # 取消当前计时器，防止重复触发
+            if self.current_timer_id:
+                self.root.after_cancel(self.current_timer_id)
+                self.current_timer_id = None
+                
+            # 计时器结束时不播放声音，因为trigger_long_break中会播放
+            # 直接记录学习会话并触发长休息
             self.record_learning_session(completed_cycle=True)
             self.trigger_long_break()
 
@@ -405,18 +539,106 @@ class LearningApp:
 
     def update_session_duration_display(self):
         """Updates the label showing the duration of the current learning segment."""
-        if self.session_start_time and hasattr(self, 'session_duration_label'):
-            elapsed_delta = datetime.now() - self.session_start_time
-            elapsed_seconds = int(elapsed_delta.total_seconds())
+        if hasattr(self, 'session_duration_label'):
+            # 使用总周期时间减去剩余时间来计算已学习时间
+            # 这种方法更准确，不受暂停次数影响
+            cycle_minutes = self.cycle_duration_var.get()
+            total_seconds = cycle_minutes * 60
+            elapsed_seconds = total_seconds - self.main_timer_seconds
+            
             mins, secs = divmod(elapsed_seconds, 60)
             # Display as MM:SS minutes
             duration_str = f"你已学习 {mins:02d}:{secs:02d} "
             self.session_duration_label.configure(text=duration_str)
+            
+    def pause_timer_for_5min(self):
+        """暂停计时器5分钟"""
+        if self.is_paused_for_5min:
+            # 如果已经处于暂停状态，则恢复计时
+            self.resume_timer()
+            return
+            
+        # 设置暂停状态
+        self.paused = True
+        self.is_paused_for_5min = True
+        
+        # 计算暂停结束时间（当前时间 + 5分钟）
+        self.pause_end_time = datetime.now() + timedelta(minutes=5)
+        
+        # 记录暂停时的已经过时间
+        if hasattr(self, 'timer_start_time'):
+            elapsed_seconds = int((datetime.now() - self.timer_start_time).total_seconds())
+            self.paused_elapsed_time += elapsed_seconds
+            # 重置计时器开始时间，为恢复做准备
+            self.timer_start_time = datetime.now()
+        
+        # 更新按钮文本
+        self.pause_button.configure(text="继续")
+        
+        # 设置暂停样式
+        font_args_pause = {"font": (FONT_NAME, 50, "bold")} if FONT_LOADED else {"font": customtkinter.CTkFont(size=50, weight="bold")}
+        self.timer_label.configure(text="暂停中", justify="center", **font_args_pause)
+        
+        # 开始显示暂停倒计时
+        self.update_pause_timer()
+        
+    def resume_timer(self):
+        """恢复计时器"""
+        # 取消暂停状态
+        self.paused = False
+        self.is_paused_for_5min = False
+        
+        # 取消暂停计时器
+        if self.pause_timer_id:
+            self.root.after_cancel(self.pause_timer_id)
+            self.pause_timer_id = None
+        
+        # 重置计时器开始时间，以便正确计算剩余时间
+        self.timer_start_time = datetime.now()
+        
+        # 更新按钮文本
+        self.pause_button.configure(text="暂停5分钟")
+        
+        # 恢复原来的大字体
+        font_args_normal = {"font": customtkinter.CTkFont(size=80, weight='bold')}
+        self.timer_label.configure(**font_args_normal)
+        
+        # 恢复计时器显示
+        self.update_timer_display()
+        
+        # 继续主计时器
+        self.run_main_timer()
+        
+    def update_pause_timer(self):
+        """更新暂停倒计时显示"""
+        if not self.is_paused_for_5min or not self.pause_end_time:
+            return
+            
+        # 计算剩余暂停时间
+        remaining_delta = self.pause_end_time - datetime.now()
+        remaining_seconds = max(0, int(remaining_delta.total_seconds()))
+        
+        mins, secs = divmod(remaining_seconds, 60)
+        
+        # 更新标签文本 - 使用较小的字体显示"暂停中"
+        self.timer_label.configure(text=f"暂停中\n{mins:02d}:{secs:02d}", justify="center")
+        
+        if remaining_seconds <= 0:
+            # 暂停时间结束，恢复计时
+            self.resume_timer()
+        else:
+            # 每秒更新一次
+            self.pause_timer_id = self.root.after(1000, self.update_pause_timer)
 
     def schedule_short_break(self):
         if self.paused or self.main_timer_seconds <= 0:
             return
-        delay = random.randint(SHORT_BREAK_MIN_INTERVAL, SHORT_BREAK_MAX_INTERVAL)
+            
+        # 获取当前选择的短休息间隔范围
+        interval_key = self.break_interval_var.get()
+        min_interval, max_interval = BREAK_INTERVAL_OPTIONS[interval_key]
+        
+        delay = random.randint(min_interval, max_interval)
         if self.main_timer_seconds > delay + SHORT_BREAK_TIMER_DURATION:
             self.short_break_timer_id = self.root.after(delay * 1000, self.trigger_short_break)
 
@@ -425,8 +647,8 @@ class LearningApp:
              return
         # Play sound using sound_manager BEFORE popup
         print("[Trigger Short Break] Playing sound first...")
-        # sound_manager.play_notification_sound('short_break_start') # Assuming specific sound
-        sound_manager.play_notification_sound() # Use default if only one sound
+        # 短休息时激活蓝牙耳机（这不是周期完成的弹窗，所以保持原有行为）
+        sound_manager.play_notification_sound(activate_bluetooth=True) # 激活蓝牙耳机
         print("[Trigger Short Break] Sound finished, showing popup.")
         
         # Pause media if setting is enabled and media is playing
@@ -447,22 +669,22 @@ class LearningApp:
 
     def trigger_long_break(self):
         print("[Trigger Long Break] Playing sound first...")
-        # sound_manager.play_notification_sound('long_break_start') # Assuming specific sound
-        sound_manager.play_notification_sound() # Use default if only one sound
+        # 只在这里播放一次提示音，不激活蓝牙耳机（避免播放两次声音）
+        sound_manager.play_notification_sound(activate_bluetooth=False) # 不激活蓝牙耳机
         print("[Trigger Long Break] Sound finished, showing popup.")
         
-        # Pause media if setting is enabled and media is playing
+        # 暂停媒体播放（如果设置启用且媒体正在播放）
         if self.auto_pause_media_var.get():
             print("[Trigger Long Break] Auto-pause media enabled, checking media status...")
             media_status = get_current_media_status()
             if media_status == "播放":
                 print("[Trigger Long Break] Media is playing, pausing...")
-                toggle_media_playback() # Call the media control function
-                self.media_paused_by_app = True # Set flag to remember we paused it
+                toggle_media_playback() # 调用媒体控制函数
+                self.media_paused_by_app = True # 设置标志记住是应用暂停的
                 print("[Trigger Long Break] Media paused.")
             else:
                 print(f"[Trigger Long Break] Media is not playing (status: {media_status}), not pausing.")
-                self.media_paused_by_app = False # Make sure flag is not set
+                self.media_paused_by_app = False # 确保标志未设置
         
         # 记录休息开始时间
         self.break_start_time = datetime.now()
@@ -472,8 +694,8 @@ class LearningApp:
 
     def end_short_break(self):
         print("[End Short Break] Playing sound...")
-        # sound_manager.play_notification_sound('short_break_end') # Assuming specific sound
-        sound_manager.play_notification_sound() # Use default if only one sound
+        # 短休息结束时激活蓝牙耳机（这不是周期完成的弹窗，所以保持原有行为）
+        sound_manager.play_notification_sound(activate_bluetooth=True) # 激活蓝牙耳机
         print("[End Short Break] Sound finished.")
         # Resume media only if auto-resume is enabled AND media was paused by the app
         if self.auto_resume_media_var.get() and self.media_paused_by_app:
@@ -489,22 +711,11 @@ class LearningApp:
         self.schedule_short_break() # Schedule the next one
 
     def end_long_break(self):
-        print("[End Long Break] Playing sound...")
-        # sound_manager.play_notification_sound('long_break_end') # Assuming specific sound
-        sound_manager.play_notification_sound() # Use default if only one sound
-        print("[End Long Break] Sound finished.")
-        # Resume media only if auto-resume is enabled AND media was paused by the app
-        if self.auto_resume_media_var.get() and self.media_paused_by_app:
-            print("[End Long Break] Auto-resume media enabled and we paused it, checking media status...")
-            media_status = get_current_media_status()
-            if media_status == "暂停":
-                print("[End Long Break] Media is paused, resuming...")
-                toggle_media_playback() # Call the media control function
-                print("[End Long Break] Media resumed.")
-            else:
-                print(f"[End Long Break] Media is not paused (status: {media_status}), not resuming.")
-        self.media_paused_by_app = False # Reset flag
-        self.show_start_button() # Return to start view after long break
+        print("[End Long Break] No sound played at end of long break.")
+        # 不再播放提示音
+        # 不再自动恢复媒体播放
+        self.media_paused_by_app = False # 重置标志
+        self.show_start_button() # 长休息后返回开始视图
         
     def show_completion_popup(self):
         """显示恭喜完成周期的弹窗"""
@@ -650,8 +861,19 @@ class LearningApp:
                 pass
             except AttributeError:
                 pass
+                
+        # 取消暂停计时器（如果存在）
+        if hasattr(self, 'pause_timer_id') and self.pause_timer_id:
+            try:
+                self.root.after_cancel(self.pause_timer_id)
+                self.pause_timer_id = None
+            except ValueError:
+                pass
+            except AttributeError:
+                pass
 
         self.paused = True
+        self.is_paused_for_5min = False
         if self.start_time:
             self.record_learning_session(completed_cycle=False) # Call the correct (second) implementation
             self.start_time = None
@@ -911,15 +1133,21 @@ class LearningApp:
     def record_learning_session(self, completed_cycle=False):
         if self.start_time:
             end_time = datetime.now()
-            duration_seconds = (end_time - self.start_time).total_seconds()
+            
+            # 使用总周期时间减去剩余时间来计算已学习时间
+            # 这种方法更准确，不受暂停次数影响
+            cycle_minutes = self.cycle_duration_var.get()
+            total_seconds = cycle_minutes * 60
+            duration_seconds = total_seconds - self.main_timer_seconds
+                
             today_str = end_time.strftime("%Y-%m-%d")
 
             # Calculate cycle fraction
             if completed_cycle:
                 cycle_fraction = 1.0
             else:
-                elapsed_time = MAIN_TIMER_DURATION - self.main_timer_seconds
-                cycle_fraction = elapsed_time / MAIN_TIMER_DURATION
+                # 使用总周期时间计算周期分数
+                cycle_fraction = duration_seconds / total_seconds
                 cycle_fraction = max(0.0, min(1.0, cycle_fraction)) # Clamp between 0 and 1
 
             session_data = {

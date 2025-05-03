@@ -300,7 +300,8 @@ class LearningApp:
         content_frame = self.main_frame
         content_frame.grid_rowconfigure(0, weight=1) # Space above button
         content_frame.grid_rowconfigure(1, weight=0) # Button row
-        content_frame.grid_rowconfigure(2, weight=1) # Space below button
+        content_frame.grid_rowconfigure(2, weight=0) # 休息时间标签行
+        content_frame.grid_rowconfigure(3, weight=1) # Space below button
         content_frame.grid_columnconfigure(0, weight=1)
 
         # Apply custom font if loaded
@@ -310,6 +311,17 @@ class LearningApp:
                                              width=300, height=80,
                                              **font_args_start_button)
         start_button.grid(row=1, column=0, sticky='') # Place button in the middle row (row 1)
+        
+        # 添加休息时间标签
+        font_args_break = {"font": (FONT_NAME, 14)} if FONT_LOADED else {"font": customtkinter.CTkFont(size=14)}
+        self.break_time_label = customtkinter.CTkLabel(content_frame, text="", **font_args_break)
+        self.break_time_label.grid(row=2, column=0, pady=(10, 0), sticky='')
+        
+        # 如果有休息开始时间，显示已休息时间
+        if hasattr(self, 'break_start_time'):
+            self.update_break_time_display()
+            # 每秒更新休息时间显示
+            self.break_timer_id = self.root.after(1000, self.update_break_time_display)
 
     def update_overview_display(self):
         if hasattr(self, 'overview_label_hours'):
@@ -339,7 +351,8 @@ class LearningApp:
         self.session_duration_label = customtkinter.CTkLabel(content_frame, text="你已学习 00:00 分钟", **font_args_session)
         self.session_duration_label.grid(row=2, column=0, pady=(0, 20), sticky='') # Place below timer
 
-        stop_button = customtkinter.CTkButton(content_frame, text="停止并记录", command=self.stop_timer_and_return)
+        font_args_stop_button = {"font": (FONT_NAME, 14)} if FONT_LOADED else {"font": customtkinter.CTkFont(size=14)}
+        stop_button = customtkinter.CTkButton(content_frame, text="停止并记录", command=self.stop_timer_and_return, **font_args_stop_button)
         stop_button.grid(row=3, column=0, pady=20, sticky='') # Place button in row 3
 
         self.update_timer_display() # Initial display update
@@ -359,6 +372,12 @@ class LearningApp:
         self.session_start_time = datetime.now() # Initialize session start time here
         self.main_timer_seconds = MAIN_TIMER_DURATION
         self.paused = False
+        
+        # 取消休息时间显示的定时器（如果存在）
+        if hasattr(self, 'break_timer_id') and self.break_timer_id:
+            self.root.after_cancel(self.break_timer_id)
+            self.break_timer_id = None
+            
         self.create_countdown_view()
         self.run_main_timer()
         self.schedule_short_break()
@@ -444,8 +463,12 @@ class LearningApp:
             else:
                 print(f"[Trigger Long Break] Media is not playing (status: {media_status}), not pausing.")
                 self.media_paused_by_app = False # Make sure flag is not set
-                
-        self.show_popup_countdown(LONG_BREAK_TIMER_DURATION, self.end_long_break, "长时间休息")
+        
+        # 记录休息开始时间
+        self.break_start_time = datetime.now()
+        
+        # 显示恭喜完成周期的弹窗，而不是倒计时
+        self.show_completion_popup()
 
     def end_short_break(self):
         print("[End Short Break] Playing sound...")
@@ -482,6 +505,61 @@ class LearningApp:
                 print(f"[End Long Break] Media is not paused (status: {media_status}), not resuming.")
         self.media_paused_by_app = False # Reset flag
         self.show_start_button() # Return to start view after long break
+        
+    def show_completion_popup(self):
+        """显示恭喜完成周期的弹窗"""
+        popup = customtkinter.CTkToplevel(self.root)
+        popup.title("周期完成")
+        popup.overrideredirect(True)  # 移除边框
+        popup_width = 400
+        popup_height = 200
+
+        # 对齐弹窗到屏幕右下角
+        user32 = ctypes.windll.user32
+        screen_width = user32.GetSystemMetrics(0)
+        screen_height = user32.GetSystemMetrics(1)
+        
+        popup.update_idletasks() 
+        x_coordinate = screen_width - popup_width*2-50
+        y_coordinate = screen_height - popup_height*2 - 50 # 调整以适应任务栏
+        popup.geometry(f"{popup_width}x{popup_height}+{x_coordinate}+{y_coordinate}")
+
+        popup.transient(self.root)
+        popup.grab_set()
+        popup.attributes("-topmost", True) # 保持弹窗在顶层
+
+        # 使用框架在弹窗内居中内容
+        popup_frame = customtkinter.CTkFrame(popup, fg_color="transparent")
+        popup_frame.pack(expand=True, fill="both", padx=20, pady=20)
+        
+        # 恭喜文本
+        font_args_popup = {"font": (FONT_NAME, 18, 'bold')} if FONT_LOADED else {"font": customtkinter.CTkFont(size=18, weight='bold')}
+        label = customtkinter.CTkLabel(popup_frame, text="恭喜你，完成了一个周期！", **font_args_popup)
+        label.pack(pady=(20, 30))
+        
+        # 关闭按钮
+        close_button = customtkinter.CTkButton(popup_frame, text="关闭", command=lambda: self.close_completion_popup(popup))
+        close_button.pack(pady=10)
+        
+        # 处理手动关闭弹窗
+        popup.protocol("WM_DELETE_WINDOW", lambda: self.close_completion_popup(popup))
+    
+    def close_completion_popup(self, popup):
+        """关闭完成周期弹窗并返回到开始界面"""
+        popup.destroy()
+        self.end_long_break()
+        
+    def update_break_time_display(self):
+        """更新显示休息时间的标签"""
+        if hasattr(self, 'break_start_time') and hasattr(self, 'break_time_label'):
+            current_time = datetime.now()
+            elapsed_delta = current_time - self.break_start_time
+            elapsed_minutes = int(elapsed_delta.total_seconds() / 60)
+            
+            self.break_time_label.configure(text=f"你已经休息 {elapsed_minutes} 分钟")
+            
+            # 每秒更新一次
+            self.break_timer_id = self.root.after(1000, self.update_break_time_display)
 
     def show_popup_countdown(self, duration, callback, title="休息提醒"):
         popup = customtkinter.CTkToplevel(self.root)
@@ -561,6 +639,16 @@ class LearningApp:
             except ValueError:
                 pass # Timer might have already fired or been cancelled
             except AttributeError: # Handle cases where after_id might not exist
+                pass
+
+        # 取消休息时间显示的定时器（如果存在）
+        if hasattr(self, 'break_timer_id') and self.break_timer_id:
+            try:
+                self.root.after_cancel(self.break_timer_id)
+                self.break_timer_id = None
+            except ValueError:
+                pass
+            except AttributeError:
                 pass
 
         self.paused = True

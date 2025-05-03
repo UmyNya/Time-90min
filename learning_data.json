@@ -1,7 +1,24 @@
 {
     "total_seconds": 0,
-    "total_cycles": 0,
-    "daily_log": {},
+    "total_cycles": 0.001851851851851852,
+    "daily_log": {
+        "2025-05-03": [
+            {
+                "start_time": "12:23:52",
+                "end_time": "12:23:57",
+                "duration_seconds": 5,
+                "completed_cycle": false,
+                "cycle_fraction": 0.0011111111111111111
+            },
+            {
+                "start_time": "12:27:12",
+                "end_time": "12:27:16",
+                "duration_seconds": 3,
+                "completed_cycle": false,
+                "cycle_fraction": 0.0007407407407407407
+            }
+        ]
+    },
     "auto_pause_media": true,
     "auto_resume_media": true
 }

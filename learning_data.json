@@ -1,65 +1,7 @@
 {
     "total_seconds": 264,
-    "total_cycles": 0.2631481481481481,
+    "total_cycles": 0.2648148148148147,
     "daily_log": {
-        "2025-05-03": [
-            {
-                "start_time": "14:47:53",
-                "end_time": "15:07:48",
-                "duration_seconds": 1194,
-                "completed_cycle": false,
-                "cycle_fraction": 0.22037037037037038
-            },
-            {
-                "start_time": "15:53:12",
-                "end_time": "15:53:33",
-                "duration_seconds": 21,
-                "completed_cycle": false,
-                "cycle_fraction": 0.002037037037037037
-            },
-            {
-                "start_time": "16:01:44",
-                "end_time": "16:02:45",
-                "duration_seconds": 61,
-                "completed_cycle": false,
-                "cycle_fraction": 0.005740740740740741
-            },
-            {
-                "start_time": "16:08:14",
-                "end_time": "16:09:14",
-                "duration_seconds": 59,
-                "completed_cycle": false,
-                "cycle_fraction": 0.02462962962962963
-            },
-            {
-                "start_time": "16:11:00",
-                "end_time": "16:11:20",
-                "duration_seconds": 34,
-                "completed_cycle": false,
-                "cycle_fraction": 0.006296296296296296
-            },
-            {
-                "start_time": "16:17:16",
-                "end_time": "16:17:40",
-                "duration_seconds": 10,
-                "completed_cycle": false,
-                "cycle_fraction": 0.001851851851851852
-            },
-            {
-                "start_time": "16:24:56",
-                "end_time": "16:25:15",
-                "duration_seconds": 9,
-                "completed_cycle": false,
-                "cycle_fraction": 0.0016666666666666668
-            },
-            {
-                "start_time": "16:35:10",
-                "end_time": "16:35:16",
-                "duration_seconds": 3,
-                "completed_cycle": false,
-                "cycle_fraction": 0.0005555555555555556
-            }
-        ]
     },
     "auto_pause_media": true,
     "auto_resume_media": true,

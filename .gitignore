@@ -154,3 +154,9 @@ Thumbs.db
 
 # vscode
 .vscode
+
+# background
+background/*.png
+background/*.jpg
+background/*.jpeg
+

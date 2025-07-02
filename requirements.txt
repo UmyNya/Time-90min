@@ -3,3 +3,4 @@ customtkinter
 numpy
 pygame
 winsdk
+Pillow

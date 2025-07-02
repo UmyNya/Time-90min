@@ -1,3 +1,4 @@
+import ctypes
 import tkinter as tk
 from tkinter import messagebox, font
 import time
@@ -6,15 +7,21 @@ import json
 from datetime import datetime, timedelta
 import os
 import sound_manager
-import ctypes
 import win32api
 import win32con
 import customtkinter
+from PIL import Image, ImageTk  # 导入 Pillow 库的 Image 和 ImageTk 模块
+
+# --- CustomTkinter 缩放设置 ---
+# 将 customtkinter 的内部缩放设置回 1 (100%)，让 Tkinter/OS 处理 DPI
+customtkinter.set_widget_scaling(1) # 控件缩放
+customtkinter.set_window_scaling(1) # 窗口缩放
 
 # --- Load Custom Font ---
 FONT_NAME = "Alibaba PuHuiTi"
 FONT_FILENAME = "Alibaba-PuHuiTi-Regular.ttf"
 FONT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), FONT_FILENAME)
+
 
 def load_custom_font():
     try:
@@ -26,6 +33,7 @@ def load_custom_font():
     except Exception as e:
         print(f"Error loading custom font: {e}")
         return False
+
 
 FONT_LOADED = load_custom_font()
 
@@ -58,9 +66,14 @@ DATA_FILE = "learning_data.json"
 # 如果要修改倒计时弹窗的相关配置，去本脚本的 show_popup_countdown 这个函数中修改
 # 测试弹出可以用 popup_countdown_test.py 来测试
 # 这里是部分配置，我提到上面来了
-POPUP_WIDTH = 30 # 默认为 600 或屏幕大小的 0.12 倍
-POPUP_HEIGHT = 30  # 默认为 300 或屏幕大小的 0.12 倍
-POPUP_FONT_SIZE = 15 # 默认为 140
+POPUP_WIDTH = 200  # 默认为 600 或屏幕大小的 0.12 倍
+POPUP_HEIGHT = 200  # 默认为 300 或屏幕大小的 0.12 倍
+POPUP_FONT_SIZE = 20  # 默认为 140
+POPUP_IMAGE_DIR = "./background/"
+POPUP_IMAGE_FONT_COLOR = "black"
+POPUP_IS_KEEP_ASPECT_RATIO = (
+    True  # True 则固定POPUP_HEIGHT，根据图片长宽比例调整POPUP_WIDTH。否则固定窗口大小
+)
 
 
 # --- DPI Awareness (修复Windows上的模糊问题) ---
@@ -90,6 +103,7 @@ def get_current_media_status():
         print(f"获取媒体状态时出错: {e}")
         return "未知状态"
 
+
 def toggle_media_playback():
     """切换媒体播放/暂停状态"""
     try:
@@ -108,6 +122,7 @@ def toggle_media_playback():
         except Exception as e2:
             print(f"模拟媒体键时出错: {e2}")
         return "未知结果"
+
 
 # --- Settings Page using CustomTkinter ---
 class SettingsPage(customtkinter.CTkToplevel):
@@ -265,11 +280,13 @@ class SettingsPage(customtkinter.CTkToplevel):
         if confirmed:
             self.app.clear_learning_data()
             messagebox.showinfo("操作完成", "学习数据已清空。", parent=self)
+
     def update_cycle_value(self, value=None):
         # 更新周期时间显示
         current_value = self.app.cycle_duration_var.get()
         self.cycle_value_label.configure(text=f"{current_value}分钟")
         self.app.save_data()
+
 
 # --- Main Application Class using CustomTkinter ---
 class LearningApp:
@@ -709,6 +726,7 @@ class LearningApp:
             # Display as MM:SS minutes
             duration_str = f"你已学习 {mins:02d}:{secs:02d} "
             self.session_duration_label.configure(text=duration_str)
+
     def pause_timer_for_5min(self):
         """暂停计时器5分钟"""
         if self.is_paused_for_5min:
@@ -963,7 +981,15 @@ class LearningApp:
             # 每秒更新一次
             self.break_timer_id = self.root.after(1000, self.update_break_time_display)
 
-    def show_popup_countdown(self, duration, callback, title="休息提醒"):
+    def show_popup_countdown(
+        self,
+        duration,
+        callback,
+        title="休息提醒",
+        image_dir=POPUP_IMAGE_DIR,
+        image_font_color=POPUP_IMAGE_FONT_COLOR,
+        is_keep_aspect_ratio=POPUP_IS_KEEP_ASPECT_RATIO,
+    ):
         popup = customtkinter.CTkToplevel(self.root)
         popup.title(title)
         popup.overrideredirect(True)  # 移除边框
@@ -983,35 +1009,131 @@ class LearningApp:
 
         # 默认初始化窗口 popup.winfo_width() 会等于 1 。
         # 这里是判断如果窗口大小初始化不正常，就动态设置为屏幕的 0.12 倍，解决分辨率问题
-        popup_width = int(screen_width * 0.12) if popup.winfo_width() <= 1 else popup_width
-        popup_height = int(screen_height * 0.12) if popup.winfo_height() <= 1 else popup_width
+        popup_width = (
+            int(screen_width * 0.12) if popup.winfo_width() <= 1 else popup_width
+        )
+        popup_height = (
+            int(screen_height * 0.12) if popup.winfo_height() <= 1 else popup_height
+        )
+        
+        # 尝试在图片文件夹下随机加载图片
+        image_path = ""
+        if os.path.isdir(image_dir):
+            # List all files in the directory
+            all_files = os.listdir(image_dir)
+            # Define common image file extensions
+            # You can expand this list if you have other formats
+            image_extensions = ('.png', '.jpg', '.jpeg')
+            # Filter out non-image files
+            image_files = [f for f in all_files if f.lower().endswith(image_extensions)]
+            if image_files:
+                # 如果存在图片文件
+                print(image_files)
+                image_path = image_dir + random.choice(image_files)
+                print(image_path)
+            
+        
+        # 根据图片的长宽和配置来综合确定窗口大小
+        background_image_tk = None
+        if image_path and os.path.exists(image_path):
+            try:
+                pil_image = Image.open(image_path)
+                # 确定图片的原始大小和长宽比
+                original_image_width = 0
+                original_image_height = 0
+                if pil_image:
+                    original_image_width, original_image_height = pil_image.size
+                image_aspect_ratio = original_image_width / original_image_height
+                # 确定图片的大小，
+                # is_keep_aspect_ratio==True是固定高度，根据图片长宽比来动态调整高度.
+                # 否则固定窗口大小
+                if is_keep_aspect_ratio:
+                    calculated_width = int(popup_height * image_aspect_ratio)
+                    popup_width = calculated_width
+                popup_height = popup_height
+                background_image_tk = True
+            except Exception as e:
+                print(f"加载或处理背景图片失败: {e}")
+                background_image_tk = None  # 如果加载失败，则不使用图片
+
         popup.update_idletasks()
-        x_coordinate = screen_width - popup_width * 2 - 50
-        y_coordinate = (
-            screen_height - popup_height * 2 - 50
-        )  # Adjust slightly for taskbar
+        x_coordinate = screen_width - int(popup_width * 1.05) - 100
+        y_coordinate = screen_height - int(popup_height * 1.05) - 100  # Adjust slightly for taskbar
         popup.geometry(f"{popup_width}x{popup_height}+{x_coordinate}+{y_coordinate}")
         # --- Align Popup to Bottom-Right --- END
 
         popup.transient(self.root)
         popup.grab_set()
         popup.attributes("-topmost", True)  # Keep popup on top
+        
 
-        # Use a frame for centering content within the popup
-        popup_frame = customtkinter.CTkFrame(popup, fg_color="transparent")
-        popup_frame.pack(expand=True, fill="both")
-        popup_frame.grid_rowconfigure(0, weight=1)
-        popup_frame.grid_columnconfigure(0, weight=1)
+        # --- 背景图片处理部分 ---
+        # 根据是否有背景图片选择使用 CTkCanvas 或 CTkFrame 作为容器
+        if background_image_tk and pil_image:
+            # 调整图片大小以适应弹窗
+            # 使用 Image.LANCZOS 算法进行高质量缩放
+            pil_image = pil_image.resize((popup.winfo_width(), popup.winfo_height()), Image.LANCZOS)
+            background_image_tk = ImageTk.PhotoImage(pil_image)
+            # 使用 CTkCanvas 来显示背景图片
+            canvas = customtkinter.CTkCanvas(
+                popup,
+                width=popup.winfo_width(), # 使用当前窗口（经过DPI调整）的大小，从而覆盖整个窗口
+                height=popup.winfo_height(),
+                highlightthickness=0,  # highlightthickness=0 移除 Canvas 边框
+                bd=0,  # bd=0 移除 borderwidth
+                relief="flat",
+            )
+            canvas.pack(expand=True, padx=0, pady=0, ipadx=0, ipady=0)
+            canvas.create_image(
+                popup.winfo_width() / 2,
+                popup.winfo_height() / 2,
+                image=background_image_tk,
+                anchor="center",
+            )  # 将图片放置在 Canvas 的居中位置
+            canvas.background_image = (
+                background_image_tk  # 将图片引用保存到 Canvas，防止被垃圾回收
+            )
 
-        # Apply custom font if loaded, increase size for countdown
-        font_size = POPUP_FONT_SIZE if POPUP_FONT_SIZE else 140
-        font_args_popup = (
-            {"font": (FONT_NAME, font_size, "bold")}
-            if FONT_LOADED
-            else {"font": customtkinter.CTkFont(size=font_size, weight="bold")}
-        )
-        label = customtkinter.CTkLabel(popup_frame, text="", **font_args_popup)
-        label.grid(row=0, column=0, sticky="nsew")  # Center using grid
+            # 倒计时标签现在放置在 Canvas 上
+            font_size = POPUP_FONT_SIZE if POPUP_FONT_SIZE else 140
+            font_args_popup = (
+                {"font": (FONT_NAME, font_size, "bold")}
+                if FONT_LOADED
+                else {"font": customtkinter.CTkFont(size=font_size, weight="bold")}
+            )
+            # 标签背景设置为透明 (fg_color="transparent")，确保图片能显示出来
+            # 文本颜色建议设为白色或与背景对比鲜明的颜色
+            label = customtkinter.CTkLabel(
+                canvas,
+                text="",
+                fg_color="transparent",
+                text_color=image_font_color,
+                **font_args_popup,
+            )
+            # 使用 create_window 将标签放置在 Canvas 中央
+            canvas.create_window(
+                popup.winfo_width() / 2,
+                popup.winfo_height() / 2,
+                window=label,
+                anchor="center",
+            )
+        else:
+            # 如果没有背景图片，则回退到使用 CTkFrame
+            # Use a frame for centering content within the popup
+            popup_frame = customtkinter.CTkFrame(popup, fg_color="transparent")
+            popup_frame.pack(expand=True, fill="both")
+            popup_frame.grid_rowconfigure(0, weight=1)
+            popup_frame.grid_columnconfigure(0, weight=1)
+
+            # Apply custom font if loaded, increase size for countdown
+            font_size = POPUP_FONT_SIZE if POPUP_FONT_SIZE else 140
+            font_args_popup = (
+                {"font": (FONT_NAME, font_size, "bold")}
+                if FONT_LOADED
+                else {"font": customtkinter.CTkFont(size=font_size, weight="bold")}
+            )
+            label = customtkinter.CTkLabel(popup_frame, text="", **font_args_popup)
+            label.grid(row=0, column=0, sticky="nsew")  # Center using grid
 
         def update_popup_timer(secs):
             if secs >= 0:

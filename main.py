@@ -66,8 +66,8 @@ DATA_FILE = "learning_data.json"
 # 如果要修改倒计时弹窗的相关配置，去本脚本的 show_popup_countdown 这个函数中修改
 # 测试弹出可以用 popup_countdown_test.py 来测试
 # 这里是部分配置，我提到上面来了
-POPUP_WIDTH = 200  # 默认为 600 或屏幕大小的 0.12 倍
-POPUP_HEIGHT = 200  # 默认为 300 或屏幕大小的 0.12 倍
+POPUP_WIDTH = 400  # 默认为 600 或屏幕大小的 0.12 倍
+POPUP_HEIGHT = 400  # 默认为 300 或屏幕大小的 0.12 倍
 POPUP_FONT_SIZE = 20  # 默认为 140
 POPUP_IMAGE_DIR = "./background/"
 POPUP_IMAGE_FONT_COLOR = "black"
@@ -296,6 +296,9 @@ class LearningApp:
         # Change window size to 600x600
         self.root.geometry("500x400")  # User requested size
         self.root.minsize(400, 300)  # User requested min size
+        
+        # 背景图片列表
+        self.image_files = []
 
         # --- Set CustomTkinter Appearance ---
         customtkinter.set_appearance_mode(
@@ -833,7 +836,7 @@ class LearningApp:
         # Play sound using sound_manager BEFORE popup
         print("[Trigger Short Break] Playing sound first...")
         # 短休息时激活蓝牙耳机（这不是周期完成的弹窗，所以保持原有行为）
-        sound_manager.play_notification_sound(activate_bluetooth=True)  # 激活蓝牙耳机
+        sound_manager.play_notification_sound(activate_bluetooth=False)  # 激活蓝牙耳机
         print("[Trigger Short Break] Sound finished, showing popup.")
 
         # Pause media if setting is enabled and media is playing
@@ -1019,18 +1022,21 @@ class LearningApp:
         # 尝试在图片文件夹下随机加载图片
         image_path = ""
         if os.path.isdir(image_dir):
-            # List all files in the directory
-            all_files = os.listdir(image_dir)
-            # Define common image file extensions
-            # You can expand this list if you have other formats
-            image_extensions = ('.png', '.jpg', '.jpeg')
-            # Filter out non-image files
-            image_files = [f for f in all_files if f.lower().endswith(image_extensions)]
-            if image_files:
+            # 如果image_files没有被初始化，就先初始化
+            
+            if not self.image_files:
+                # List all files in the directory
+                all_files = os.listdir(image_dir)
+                # Define common image file extensions
+                # You can expand this list if you have other formats
+                image_extensions = ('.png', '.jpg', '.jpeg')
+                # Filter out non-image files
+                self.image_files = [f for f in all_files if f.lower().endswith(image_extensions)]
+                
+            if self.image_files:
                 # 如果存在图片文件
-                print(image_files)
-                image_path = image_dir + random.choice(image_files)
-                print(image_path)
+                image_path = image_dir + random.choice(self.image_files)
+                print("image_path = ",image_path)
             
         
         # 根据图片的长宽和配置来综合确定窗口大小
@@ -1048,8 +1054,7 @@ class LearningApp:
                 # is_keep_aspect_ratio==True是固定高度，根据图片长宽比来动态调整高度.
                 # 否则固定窗口大小
                 if is_keep_aspect_ratio:
-                    calculated_width = int(popup_height * image_aspect_ratio)
-                    popup_width = calculated_width
+                    popup_width = int(popup_height * image_aspect_ratio) 
                 popup_height = popup_height
                 background_image_tk = True
             except Exception as e:
@@ -1057,8 +1062,8 @@ class LearningApp:
                 background_image_tk = None  # 如果加载失败，则不使用图片
 
         popup.update_idletasks()
-        x_coordinate = screen_width - int(popup_width * 1.05) - 100
-        y_coordinate = screen_height - int(popup_height * 1.05) - 100  # Adjust slightly for taskbar
+        x_coordinate = screen_width - int(popup_width * 1.1) - 100
+        y_coordinate = screen_height - int(popup_height * 1.1) - 100  # Adjust slightly for taskbar
         popup.geometry(f"{popup_width}x{popup_height}+{x_coordinate}+{y_coordinate}")
         # --- Align Popup to Bottom-Right --- END
 
@@ -1070,53 +1075,58 @@ class LearningApp:
         # --- 背景图片处理部分 ---
         # 根据是否有背景图片选择使用 CTkCanvas 或 CTkFrame 作为容器
         if background_image_tk and pil_image:
-            # 调整图片大小以适应弹窗
-            # 使用 Image.LANCZOS 算法进行高质量缩放
-            pil_image = pil_image.resize((popup.winfo_width(), popup.winfo_height()), Image.LANCZOS)
-            background_image_tk = ImageTk.PhotoImage(pil_image)
-            # 使用 CTkCanvas 来显示背景图片
-            canvas = customtkinter.CTkCanvas(
-                popup,
-                width=popup.winfo_width(), # 使用当前窗口（经过DPI调整）的大小，从而覆盖整个窗口
-                height=popup.winfo_height(),
-                highlightthickness=0,  # highlightthickness=0 移除 Canvas 边框
-                bd=0,  # bd=0 移除 borderwidth
-                relief="flat",
-            )
-            canvas.pack(expand=True, padx=0, pady=0, ipadx=0, ipady=0)
-            canvas.create_image(
-                popup.winfo_width() / 2,
-                popup.winfo_height() / 2,
-                image=background_image_tk,
-                anchor="center",
-            )  # 将图片放置在 Canvas 的居中位置
-            canvas.background_image = (
-                background_image_tk  # 将图片引用保存到 Canvas，防止被垃圾回收
-            )
+            try:
+                # 在获取尺寸前强制更新窗口布局
+                popup.update_idletasks()
+                # 调整图片大小以适应弹窗
+                # 使用 Image.LANCZOS 算法进行高质量缩放
+                pil_image = pil_image.resize((popup.winfo_width(), popup.winfo_height()), Image.LANCZOS)
+                background_image_tk = ImageTk.PhotoImage(pil_image)
+                # 使用 CTkCanvas 来显示背景图片
+                canvas = customtkinter.CTkCanvas(
+                    popup,
+                    width=popup.winfo_width(), # 使用当前窗口（经过DPI调整）的大小，从而覆盖整个窗口
+                    height=popup.winfo_height(),
+                    highlightthickness=0,  # highlightthickness=0 移除 Canvas 边框
+                    bd=0,  # bd=0 移除 borderwidth
+                    relief="flat",
+                )
+                canvas.pack(expand=True, padx=0, pady=0, ipadx=0, ipady=0)
+                canvas.create_image(
+                    popup.winfo_width() / 2,
+                    popup.winfo_height() / 2,
+                    image=background_image_tk,
+                    anchor="center",
+                )  # 将图片放置在 Canvas 的居中位置
+                canvas.background_image = (
+                    background_image_tk  # 将图片引用保存到 Canvas，防止被垃圾回收
+                )
 
-            # 倒计时标签现在放置在 Canvas 上
-            font_size = POPUP_FONT_SIZE if POPUP_FONT_SIZE else 140
-            font_args_popup = (
-                {"font": (FONT_NAME, font_size, "bold")}
-                if FONT_LOADED
-                else {"font": customtkinter.CTkFont(size=font_size, weight="bold")}
-            )
-            # 标签背景设置为透明 (fg_color="transparent")，确保图片能显示出来
-            # 文本颜色建议设为白色或与背景对比鲜明的颜色
-            label = customtkinter.CTkLabel(
-                canvas,
-                text="",
-                fg_color="transparent",
-                text_color=image_font_color,
-                **font_args_popup,
-            )
-            # 使用 create_window 将标签放置在 Canvas 中央
-            canvas.create_window(
-                popup.winfo_width() / 2,
-                popup.winfo_height() / 2,
-                window=label,
-                anchor="center",
-            )
+                # 倒计时标签现在放置在 Canvas 上
+                font_size = POPUP_FONT_SIZE if POPUP_FONT_SIZE else 140
+                font_args_popup = (
+                    {"font": (FONT_NAME, font_size, "bold")}
+                    if FONT_LOADED
+                    else {"font": customtkinter.CTkFont(size=font_size, weight="bold")}
+                )
+                # 标签背景设置为透明 (fg_color="transparent")，确保图片能显示出来
+                # 文本颜色建议设为白色或与背景对比鲜明的颜色
+                label = customtkinter.CTkLabel(
+                    canvas,
+                    text="",
+                    fg_color="transparent",
+                    text_color=image_font_color,
+                    **font_args_popup,
+                )
+                # 使用 create_window 将标签放置在 Canvas 中央
+                canvas.create_window(
+                    popup.winfo_width() / 2,
+                    popup.winfo_height() / 2,
+                    window=label,
+                    anchor="center",
+                )
+            except Exception as e:
+                print("error, when try to create popup background image:",e)
         else:
             # 如果没有背景图片，则回退到使用 CTkFrame
             # Use a frame for centering content within the popup

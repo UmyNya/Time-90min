@@ -156,7 +156,11 @@ Thumbs.db
 .vscode
 
 # background
-background/*.png
-background/*.jpg
-background/*.jpeg
+background/**/*.png
+background/**/*.jpg
+background/**/*.jpeg
+background/**/*.gif
+background/**/*.bmp
+background/**/*.tiff
+background/**/
 

@@ -39,7 +39,7 @@ FONT_LOADED = load_custom_font()
 
 # --- Constants ---
 DEFAULT_MAIN_TIMER_DURATION = 90 * 60  # 默认90分钟（秒）
-SHORT_BREAK_TIMER_DURATION = 10  # 10 seconds
+SHORT_BREAK_TIMER_DURATION = 30  # 单位是 seconds
 LONG_BREAK_TIMER_DURATION = 20 * 60  # 20 minutes in seconds
 
 # 短休息间隔选项（秒）
@@ -68,7 +68,7 @@ DATA_FILE = "learning_data.json"
 # 这里是部分配置，我提到上面来了
 POPUP_WIDTH = 400  # 默认为 600 或屏幕大小的 0.12 倍
 POPUP_HEIGHT = 400  # 默认为 300 或屏幕大小的 0.12 倍
-POPUP_FONT_SIZE = 20  # 默认为 140
+POPUP_FONT_SIZE = 18  # 默认为 140
 POPUP_IMAGE_DIR = "./background/"
 POPUP_IMAGE_FONT_COLOR = "black"
 POPUP_IS_KEEP_ASPECT_RATIO = (
@@ -928,6 +928,9 @@ class LearningApp:
         popup.overrideredirect(True)  # 移除边框
         popup_width = 400
         popup_height = 200
+        print("show_completion_popup")
+        print("window size:",popup.winfo_width(), popup.winfo_height())
+        print("check here")
 
         # 对齐弹窗到屏幕右下角
         user32 = ctypes.windll.user32
@@ -1021,24 +1024,39 @@ class LearningApp:
         
         # 尝试在图片文件夹下随机加载图片
         image_path = ""
+        # 支持的图片扩展名
+        image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff']
+        
         if os.path.isdir(image_dir):
             # 如果image_files没有被初始化，就先初始化
-            
             if not self.image_files:
-                # List all files in the directory
-                all_files = os.listdir(image_dir)
-                # Define common image file extensions
-                # You can expand this list if you have other formats
-                image_extensions = ('.png', '.jpg', '.jpeg')
-                # Filter out non-image files
-                self.image_files = [f for f in all_files if f.lower().endswith(image_extensions)]
+                # 遍历文件夹及其子文件夹
+                for root, dirs, files in os.walk(image_dir):
+                    for file in files:
+                        # 检查文件扩展名是否为图片
+                        if any(file.lower().endswith(ext) for ext in image_extensions):
+                            self.image_files.append(os.path.join(root, file))
+                    # 检查是否存在文件夹的符号链接
+                    for lnk_dir in dirs:                        
+                        full_path = os.path.join(root, lnk_dir)
+                        if os.path.islink(full_path):  # 如果是符号链接（不包括快捷方式）
+                            try:
+                                target_path = os.path.realpath(full_path)  # 解析真实路径
+                                if os.path.isdir(target_path):  # 确保目标是目录
+                                    # 仅遍历链接目录第一层的文件（防止无尽的递归）
+                                    for link_root, link_dirs, link_files in os.walk(target_path):
+                                        for link_file in link_files:
+                                            # 检查文件扩展名是否为图片
+                                            if any(link_file.lower().endswith(ext) for ext in image_extensions):
+                                                self.image_files.append(os.path.join(link_root, link_file))
+                            except OSError as e:  # 权限问题或无效链接
+                                print("无效符号链接或权限问题:",e)
                 
             if self.image_files:
                 # 如果存在图片文件
-                image_path = image_dir + random.choice(self.image_files)
-                print("image_path = ",image_path)
-            
-        
+                image_path = random.choice(self.image_files)
+                print("image_path =",image_path)
+                    
         # 根据图片的长宽和配置来综合确定窗口大小
         background_image_tk = None
         if image_path and os.path.exists(image_path):
@@ -1060,11 +1078,19 @@ class LearningApp:
             except Exception as e:
                 print(f"加载或处理背景图片失败: {e}")
                 background_image_tk = None  # 如果加载失败，则不使用图片
-
+        
+        
+        # 确保任何挂起的布局和尺寸计算完成
         popup.update_idletasks()
         x_coordinate = screen_width - int(popup_width * 1.1) - 100
         y_coordinate = screen_height - int(popup_height * 1.1) - 100  # Adjust slightly for taskbar
         popup.geometry(f"{popup_width}x{popup_height}+{x_coordinate}+{y_coordinate}")
+        # 禁用窗口大小调整功能
+        # 设置为 (False, False) 意味着用户不能手动拖拽窗口边缘来改变大小
+        # 这会告诉Tkinter，窗口的尺寸是固定的，应该严格遵循geometry()的设定
+        popup.resizable(False, False)
+        # 再次调用 update_idletasks() 确保几何请求得到处理
+        popup.update_idletasks()
         # --- Align Popup to Bottom-Right --- END
 
         popup.transient(self.root)
@@ -1077,6 +1103,7 @@ class LearningApp:
         if background_image_tk and pil_image:
             try:
                 # 在获取尺寸前强制更新窗口布局
+                # time.sleep(0.5)
                 popup.update_idletasks()
                 # 调整图片大小以适应弹窗
                 # 使用 Image.LANCZOS 算法进行高质量缩放
@@ -1098,6 +1125,7 @@ class LearningApp:
                     image=background_image_tk,
                     anchor="center",
                 )  # 将图片放置在 Canvas 的居中位置
+                
                 canvas.background_image = (
                     background_image_tk  # 将图片引用保存到 Canvas，防止被垃圾回收
                 )
@@ -1113,17 +1141,27 @@ class LearningApp:
                 # 文本颜色建议设为白色或与背景对比鲜明的颜色
                 label = customtkinter.CTkLabel(
                     canvas,
+                    padx=0, # 水平内边距设为 0
+                    pady=0, # 垂直内边距设为 0
                     text="",
                     fg_color="transparent",
                     text_color=image_font_color,
                     **font_args_popup,
                 )
-                # 使用 create_window 将标签放置在 Canvas 中央
+                # # 使用 create_window 将标签放置在 Canvas 中央
+                # canvas.create_window(
+                #     popup.winfo_width() / 2,
+                #     popup.winfo_height() / 2,
+                #     window=label,
+                #     anchor="center",
+                # )
+                
+                # 使用 create_window 将标签放置在 Canvas 左上角
                 canvas.create_window(
-                    popup.winfo_width() / 2,
-                    popup.winfo_height() / 2,
+                    0,
+                    0,
                     window=label,
-                    anchor="center",
+                    anchor="nw",
                 )
             except Exception as e:
                 print("error, when try to create popup background image:",e)
@@ -1171,7 +1209,6 @@ class LearningApp:
                 # Crucially, DO NOT reschedule the next short break here
             elif callback == self.end_long_break:
                 self.end_long_break()  # Run end logic
-
         popup.protocol("WM_DELETE_WINDOW", on_popup_close)
 
     # pause_media_if_enabled函数已被移除，使用更精确的媒体状态检测逻辑替代
